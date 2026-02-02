@@ -1,15 +1,12 @@
 import sys
 
-from PySide6.QtCore import QPoint, QSettings, Qt, QTimer
-from PySide6.QtGui import QFont
+from PySide6.QtCore import QPoint, QSettings, QSize, Qt, QTimer
+from PySide6.QtGui import QAction, QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel,
-    QPushButton, QSpinBox, QVBoxLayout, QWidget
+    QMenu, QPushButton, QSpinBox, QStyle, QSystemTrayIcon, QVBoxLayout, QWidget
     )
-from PySide6.QtWidgets import QSystemTrayIcon, QMenu
-from PySide6.QtGui import QIcon, QAction
-from PySide6.QtMultimedia import QSoundEffect
-from PySide6.QtCore import QUrl
+from PySide6.QtGui import QColor, QPainter, QPixmap
 
 
 # Reminder-Zeitpunkte im Fokus (verbleibende Sekunden)
@@ -17,12 +14,10 @@ DEFAULT_REMIND_AT = {40 * 60, 20 * 60, 0}
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, parent, focus_min, break_min, micro_sec, goal,
-                 start_unit):
+    def __init__(
+        self, parent, focus_min, break_min, micro_sec, goal, start_unit
+            ):
         super().__init__(parent)
-        self.start_units = QSpinBox()
-        self.start_units.setRange(0, 50)
-        self.start_units.setValue(start_unit)
 
         self.setWindowTitle("Settings")
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
@@ -42,6 +37,10 @@ class SettingsDialog(QDialog):
         self.goal = QSpinBox()
         self.goal.setRange(1, 50)
         self.goal.setValue(goal)
+
+        self.start_units = QSpinBox()
+        self.start_units.setRange(0, 50)
+        self.start_units.setValue(start_unit)
 
         form = QFormLayout()
         form.addRow("Fokus (Min)", self.focus)
@@ -63,9 +62,50 @@ class SettingsDialog(QDialog):
 
     def values(self):
         return (
-            self.focus.value(), self.brk.value(), self.micro.value(),
-            self.goal.value(), self.start_units.value()
+            self.focus.value(),
+            self.brk.value(),
+            self.micro.value(),
+            self.goal.value(),
+            self.start_units.value(),
             )
+
+
+def format_time_mmss(sec: int) -> str:
+    sec = max(0, int(sec))
+    m = sec // 60
+    s = sec % 60
+    return f"{m:02d}:{s:02d}"
+
+
+def format_hm(sec: int) -> str:
+    # ohne Sekunden: H:MM (mit führender 0 bei Minuten)
+    sec = max(0, int(sec))
+    h = sec // 3600
+    m = (sec % 3600) // 60
+    return f"{h:d}:{m:02d}"
+
+
+def beep():
+    # Wenn du später eigenen Sound willst, hier austauschen
+    QApplication.beep()
+
+
+def tint_icon(icon: QIcon, size: int = 18, color: QColor = QColor("white")) -> QIcon:
+    pm = icon.pixmap(size, size)
+    if pm.isNull():
+        return icon
+
+    tinted = QPixmap(pm.size())
+    tinted.fill(Qt.transparent)
+
+    painter = QPainter(tinted)
+    painter.setCompositionMode(QPainter.CompositionMode_Source)
+    painter.drawPixmap(0, 0, pm)
+    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    painter.fillRect(tinted.rect(), color)
+    painter.end()
+
+    return QIcon(tinted)
 
 
 class StudyClock(QWidget):
@@ -73,21 +113,33 @@ class StudyClock(QWidget):
         super().__init__()
 
         self.qs = QSettings("StudyClock", "StudyClockApp")
+
         # Persistente Settings
         self.focus_min = int(self.qs.value("focus_min", 50))
         self.break_min = int(self.qs.value("break_min", 10))
         self.micro_sec = int(self.qs.value("micro_sec", 60))
         self.session_goal = int(self.qs.value("session_goal", 7))
 
+        # gespeicherter Laufzustand
         self.mode = self.qs.value("mode", "focus")
         self.remaining = int(
             self.qs.value(
                 "remaining",
-                self.focus_min * 60 if self.mode == "focus" else self.break_min * 60
+                self.focus_min * 60 if self.mode == "focus" else
+                self.break_min * 60
                 )
             )
         self.session_count = int(self.qs.value("session_count", 0))
 
+        # Microbreak-State (optional persistiert)
+        self.microbreak_active = bool(
+            int(self.qs.value("microbreak_active", 0))
+            )
+        self.microbreak_remaining = int(
+            self.qs.value("microbreak_remaining", 0)
+            )
+
+        # Tray
         self.tray = QSystemTrayIcon(QIcon())
         menu = QMenu()
 
@@ -102,15 +154,10 @@ class StudyClock(QWidget):
 
         self.tray.setContextMenu(menu)
         self.tray.show()
-
         self.tray.activated.connect(self.on_tray_activated)
 
         # State
         self.running = False
-
-        # Microbreak (Bildschirmpause)
-        self.microbreak_active = False
-        self.microbreak_remaining = 0
         self.reminded_this_focus = set()
         self.REMIND_AT = set(DEFAULT_REMIND_AT)
 
@@ -125,21 +172,21 @@ class StudyClock(QWidget):
         self.wrapper.setObjectName("wrapper")
         self.wrapper.setStyleSheet(
             """
-                        QWidget#wrapper {
-                            background: #111;
-                            border: 1px solid #333;
-                            border-radius: 14px;
-                        }
-                        QLabel { color: #eee; }
-                        QPushButton {
-                            background: transparent;
-                            color: #eee;
-                            border: none;
-                            padding: 2px 6px;
-                            border-radius: 6px;
-                        }
-                        QPushButton:hover { background: #222; }
-                    """
+            QWidget#wrapper {
+                background: #111;
+                border: 1px solid #333;
+                border-radius: 14px;
+            }
+            QLabel { color: #eee; }
+            QPushButton {
+                background: transparent;
+                color: #eee;
+                border: none;
+                padding: 2px 6px;
+                border-radius: 6px;
+            }
+            QPushButton:hover { background: #222; }
+            """
             )
 
         # Mini-Titelleiste (Settings, Minimize, Close)
@@ -156,8 +203,19 @@ class StudyClock(QWidget):
         top_row.addWidget(self.btn_min)
         top_row.addWidget(self.btn_close)
 
-        # Timer Label
-        self.timer_label = QLabel(self.format_time(self.remaining))
+        # Lernzeit oben: 03:20/05:50 (57%)
+        self.studytime_label = QLabel("")
+        self.studytime_label.setFont(QFont("Segoe UI", 9))
+        self.studytime_label.setAlignment(Qt.AlignCenter)
+        self.studytime_label.setStyleSheet("color: #bbb;")
+
+        # Status + Timer
+        self.mode_label = QLabel("FOKUS")
+        self.mode_label.setAlignment(Qt.AlignCenter)
+        self.mode_label.setFont(QFont("Segoe UI", 9, QFont.Bold))
+        self.mode_label.setStyleSheet("color: #888;")
+
+        self.timer_label = QLabel(format_time_mmss(self.remaining))
         self.timer_label.setFont(QFont("Segoe UI", 26, QFont.Bold))
         self.timer_label.setAlignment(Qt.AlignCenter)
 
@@ -171,44 +229,84 @@ class StudyClock(QWidget):
         self.info_label.setFont(QFont("Segoe UI", 9))
         self.info_label.setAlignment(Qt.AlignCenter)
         self.info_label.setStyleSheet("color: #bbb;")
+        self.info_label.setWordWrap(True)
         self.info_label.hide()
 
-        self.mode_label = QLabel("FOKUS")
-        self.mode_label.setAlignment(Qt.AlignCenter)
-        self.mode_label.setFont(QFont("Segoe UI", 9, QFont.Bold))
-        self.mode_label.setStyleSheet("color: #888;")
+        # Controls: Icons (einheitlich, gut sichtbar)
+        self.start_btn = QPushButton()
+        self.stop_btn = QPushButton()
+        self.rewind_btn = QPushButton()
+        self.skip_btn = QPushButton()
+        self.reset_btn = QPushButton()
 
-        # Start/Pause/Reset minimal
-        self.start_btn = QPushButton("Start")
-        self.pause_btn = QPushButton("Pause")
-        self.reset_btn = QPushButton("Reset")
+        # Icons (Qt-Standard). Reset bewusst als "Reload" ODER alternativ
+        # Text-Symbol, siehe unten.
+        self.start_btn.setIcon(
+            tint_icon(self.style().standardIcon(QStyle.SP_MediaPlay))
+            )
+        self.stop_btn.setIcon(
+            tint_icon(self.style().standardIcon(QStyle.SP_MediaPause))
+            )
+        self.rewind_btn.setIcon(
+            tint_icon(self.style().standardIcon(QStyle.SP_MediaSeekBackward))
+            )
+        self.skip_btn.setIcon(
+            tint_icon(self.style().standardIcon(QStyle.SP_MediaSeekForward))
+            )
 
-        ctrl_row = QHBoxLayout()
-        ctrl_row.setContentsMargins(10, 0, 10, 10)
-        ctrl_row.setSpacing(8)
-        for b in (self.start_btn, self.pause_btn, self.reset_btn):
+        self.reset_btn.setText("⟲")
+        self.reset_btn.setFont(QFont("Segoe UI", 12, QFont.Bold))
+
+        for b in (
+                self.start_btn, self.stop_btn, self.rewind_btn, self.skip_btn,
+                self.reset_btn
+                ):
+            b.setIconSize(QSize(18, 18))
+            b.setFixedSize(44, 32)
             b.setStyleSheet(
                 """
-                                QPushButton {
-                                    background: #1a1a1a; border: 1px solid 
-                                    #2a2a2a;
-                                    padding: 6px 10px; border-radius: 10px;
-                                }
-                                QPushButton:hover { background: #202020; }
-                            """
+                QPushButton {
+                    background: #262626;
+                    border: 1px solid #3a3a3a;
+                    border-radius: 10px;
+                    color: white;              /* ← DAS ist der entscheidende Teil */
+                }
+                QPushButton:hover { background: #2f2f2f; border: 1px solid #4a4a4a; }
+                QPushButton:pressed { background: #1f1f1f; }
+            """
                 )
-            ctrl_row.addWidget(b)
+
+        # Falls du Reset als Text-Symbol verwendest (Option 2), dann Schrift
+        # einstellen:
+        # self.reset_btn.setFont(QFont("Segoe UI", 12, QFont.Bold))
+
+        # Tooltips
+        self.start_btn.setToolTip("Start")
+        self.stop_btn.setToolTip("Stop")
+        self.rewind_btn.setToolTip("Zurück (Phase)")
+        self.skip_btn.setToolTip("Vor (Phase)")
+        self.reset_btn.setToolTip("Reset")
+
+        ctrl_row = QHBoxLayout()
+        ctrl_row.setContentsMargins(10, 4, 10, 14)
+        ctrl_row.setSpacing(8)
+        ctrl_row.addWidget(self.start_btn)
+        ctrl_row.addWidget(self.stop_btn)
+        ctrl_row.addWidget(self.rewind_btn)
+        ctrl_row.addWidget(self.skip_btn)
+        ctrl_row.addWidget(self.reset_btn)
 
         # Wrapper Layout
         wrap_layout = QVBoxLayout(self.wrapper)
         wrap_layout.setContentsMargins(0, 0, 0, 0)
         wrap_layout.setSpacing(8)
         wrap_layout.addLayout(top_row)
+        wrap_layout.addWidget(self.studytime_label)
+        wrap_layout.addWidget(self.mode_label)
         wrap_layout.addWidget(self.timer_label)
         wrap_layout.addWidget(self.counter_label)
         wrap_layout.addWidget(self.info_label)
         wrap_layout.addLayout(ctrl_row)
-        wrap_layout.insertWidget(1, self.mode_label)
 
         # Tick Timer
         self.tick_timer = QTimer(self)
@@ -217,7 +315,9 @@ class StudyClock(QWidget):
 
         # Signals
         self.start_btn.clicked.connect(self.start)
-        self.pause_btn.clicked.connect(self.pause)
+        self.stop_btn.clicked.connect(self.pause)
+        self.rewind_btn.clicked.connect(self.rewind_phase)
+        self.skip_btn.clicked.connect(self.skip_phase)
         self.reset_btn.clicked.connect(self.reset_all)
 
         self.btn_close.clicked.connect(QApplication.quit)
@@ -228,12 +328,18 @@ class StudyClock(QWidget):
         self._dragging = False
         self._drag_offset = QPoint(0, 0)
 
-        self.resize(220, 220)
+        self.resize(260, 220)
         self.update_layout_geometry()
         self.update_ui()
 
+        # Wenn beim Start bereits microbreak_active geladen wurde,
+        # Info direkt setzen
+        if self.microbreak_active:
+            self.set_info(
+                f"Bildschirmpause: noch {self.microbreak_remaining}s"
+                )
+
     def update_layout_geometry(self):
-        # wrapper füllt das ganze Fenster (für runde Ecken)
         self.wrapper.setGeometry(0, 0, self.width(), self.height())
 
     def resizeEvent(self, event):
@@ -241,10 +347,21 @@ class StudyClock(QWidget):
         self.update_layout_geometry()
 
     # ----------------- Helpers -----------------
-    def format_time(self, sec: int) -> str:
-        m = sec // 60
-        s = sec % 60
-        return f"{m:02d}:{s:02d}"
+
+    def calc_focus_progress(self):
+        focus_block = self.focus_min * 60
+        total = self.session_goal * focus_block
+
+        done = self.session_count * focus_block
+        if self.mode == "focus":
+            done += (focus_block - self.remaining)
+
+        done = min(max(done, 0), total)
+        left = total - done
+        pct = 0
+        if total > 0:
+            pct = int(round((done / total) * 100))
+        return done, left, total, pct
 
     def counter_text(self) -> str:
         return f"Einheiten: {self.session_count}/{self.session_goal}"
@@ -258,19 +375,28 @@ class StudyClock(QWidget):
             self.info_label.hide()
 
     def update_ui(self):
-        self.timer_label.setText(self.format_time(self.remaining))
+        self.timer_label.setText(format_time_mmss(self.remaining))
         self.counter_label.setText(self.counter_text())
 
-        self.mode_label.setText("FOKUS" if self.mode == "focus" else "PAUSE")
-
-        # optional: leicht anderer Farbton je Mode (minimal, ohne Text)
-        if self.mode == "focus":
-            self.timer_label.setStyleSheet("color: #7CFC98;")
+        # Mode-Text / Farben
+        if not self.running:
+            self.mode_label.setText("PAUSIERT")
+            self.mode_label.setStyleSheet("color: #ff6b6b;")
+            self.timer_label.setStyleSheet("color: #ff6b6b;")
         else:
-            self.timer_label.setStyleSheet("color: #7CC7FF;")
+            self.mode_label.setText(
+                "FOKUS" if self.mode == "focus" else "PAUSE"
+                )
+            self.mode_label.setStyleSheet("color: #888;")
+            if self.mode == "focus":
+                self.timer_label.setStyleSheet("color: #7CFC98;")
+            else:
+                self.timer_label.setStyleSheet("color: #7CC7FF;")
 
-    def beep(self):
-        QApplication.beep()
+        done, left, total, pct = self.calc_focus_progress()
+        self.studytime_label.setText(
+            f"{format_hm(done)}/{format_hm(total)} ({pct}%)"
+            )
 
     # ----------------- Control -----------------
     def start(self):
@@ -278,10 +404,29 @@ class StudyClock(QWidget):
             self.running = True
             self.tick_timer.start()
 
+            # passenden Infotext wiederherstellen
+            if self.microbreak_active:
+                self.set_info(
+                    f"Bildschirmpause: noch {self.microbreak_remaining}s"
+                    )
+            else:
+                self.set_info("")
+
+            self.update_ui()
+
     def pause(self):
         self.running = False
         self.tick_timer.stop()
-        self.set_info("")
+
+        # Info NICHT löschen, wenn Microbreak aktiv ist
+        if self.microbreak_active:
+            self.set_info(
+                f"Bildschirmpause pausiert: noch {self.microbreak_remaining}s"
+                )
+        else:
+            self.set_info("")
+
+        self.update_ui()
 
     def reset_all(self):
         self.running = False
@@ -294,6 +439,50 @@ class StudyClock(QWidget):
         self.reminded_this_focus.clear()
         self.set_info("")
         self.update_ui()
+
+    def skip_phase(self):
+        # 1) Wenn Microbreak aktiv: sofort beenden (und ggf. Phase wechseln)
+        if self.microbreak_active:
+            self.end_microbreak()
+            return
+
+        # 2) Sonst: aktuelle Phase überspringen
+        if self.mode == "focus":
+            # Fokus sofort beenden: Einheit +1 und Pause starten
+            self.session_count += 1
+            self.switch_to_break()
+        else:
+            # Pause sofort beenden: Fokus starten
+            self.switch_to_focus()
+
+        self.update_ui()
+
+    def rewind_phase(self):
+        # Wenn Microbreak aktiv ist: Zurück = Microbreak abbrechen (zurück
+        # in die Phase)
+        if self.microbreak_active:
+            self.microbreak_active = False
+            self.microbreak_remaining = 0
+            self.set_info("")
+            self.update_ui()
+            return
+
+        # Von Pause zurück in Fokus (ohne Einheitenänderung)
+        if self.mode == "break":
+            self.mode = "focus"
+            self.remaining = self.focus_min * 60
+            self.set_info("")
+            self.update_ui()
+            return
+
+        # Von Fokus zurück in Pause: Einheit zurücknehmen (wenn >0)
+        if self.mode == "focus":
+            if self.session_count > 0:
+                self.session_count -= 1
+            self.mode = "break"
+            self.remaining = self.break_min * 60
+            self.set_info("Pause")
+            self.update_ui()
 
     # ----------------- Settings -----------------
     def open_settings(self):
@@ -328,31 +517,32 @@ class StudyClock(QWidget):
         self.mode = "break"
         self.remaining = self.break_min * 60
         self.set_info("Pause")
-        self.beep()
+        beep()
 
     def switch_to_focus(self):
         self.mode = "focus"
         self.remaining = self.focus_min * 60
         self.reminded_this_focus.clear()
         self.set_info("")
-        self.beep()
+        beep()
 
     def start_microbreak(self, reason: str):
         self.microbreak_active = True
         self.microbreak_remaining = self.micro_sec
         self.set_info(f"Bildschirmpause: {reason} ({self.micro_sec}s)")
-        self.beep()
+        beep()
 
     def end_microbreak(self):
         self.microbreak_active = False
         self.microbreak_remaining = 0
         self.set_info("")
 
-        # Falls Fokus bereits bei 0 war und wir nur wegen microbreak
-        # pausiert haben:
+        # Wenn Microbreak beim Fokus-Ende gestartet wurde:
         if self.mode == "focus" and self.remaining <= 0:
             self.session_count += 1
             self.switch_to_break()
+
+        self.update_ui()
 
     def on_tick(self):
         if not self.running:
@@ -367,6 +557,7 @@ class StudyClock(QWidget):
                 self.set_info(
                     f"Bildschirmpause: noch {self.microbreak_remaining}s"
                     )
+                self.update_ui()
             return
 
         # Normaler Countdown
@@ -398,6 +589,23 @@ class StudyClock(QWidget):
 
         self.update_ui()
 
+    # ----------------- Tray / Window -----------------
+    def on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.Trigger:  # Linksklick
+            self.showNormal()
+            self.raise_()
+            self.activateWindow()
+
+    def closeEvent(self, event):
+        self.qs.setValue("mode", self.mode)
+        self.qs.setValue("remaining", self.remaining)
+        self.qs.setValue("session_count", self.session_count)
+        self.qs.setValue("microbreak_active", int(self.microbreak_active))
+        self.qs.setValue(
+            "microbreak_remaining", int(self.microbreak_remaining)
+            )
+        event.accept()
+
     # ----------------- Dragging -----------------
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -413,18 +621,6 @@ class StudyClock(QWidget):
 
     def mouseReleaseEvent(self, event):
         self._dragging = False
-        event.accept()
-
-    def on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.Trigger:  # Linksklick
-            self.showNormal()
-            self.raise_()
-            self.activateWindow()
-
-    def closeEvent(self, event):
-        self.qs.setValue("mode", self.mode)
-        self.qs.setValue("remaining", self.remaining)
-        self.qs.setValue("session_count", self.session_count)
         event.accept()
 
 
