@@ -1,4 +1,8 @@
 *.xml
 *.iml
+*.spec
+
 .venv
 .idea
+build
+dist
