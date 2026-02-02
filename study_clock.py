@@ -10,7 +10,7 @@ FOCUS_SEC = 50 * 60
 BREAK_SEC = 10 * 60
 MICROBREAK_SEC = 60
 
-# Reminder-Zeitpunkte im Fokus (verbleibende Sekunden)
+# Reminder-time im Fokus (verbleibende Sekunden)
 REMIND_AT = {40 * 60, 20 * 60, 0}
 
 
