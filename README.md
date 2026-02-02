@@ -12,7 +12,6 @@ feedback about your study efficiency without unnecessary complexity.
 - Session-based unit tracking
 - Automatic statistics & efficiency calculation
 - Persistent state (resume where you stopped)
-- System tray support
 - Built with PySide6 (Qt)
 
 ## Installation (from source)
@@ -21,5 +20,14 @@ feedback about your study efficiency without unnecessary complexity.
 - Python 3.10+
 - Windows 10 / 11
 
-```bash
-pip install -r requirements.txt
+`pip install -r requirements.txt`
+
+### Run locally
+`python -m studyclock`
+
+### Build standalone executable (Windows)
+`pyinstaller --onedir --noconsole --name StudyClock src/studyclock/app.py`
+
+
+### The executable will be located in:
+`dist/StudyClock/StudyClock.exe`
