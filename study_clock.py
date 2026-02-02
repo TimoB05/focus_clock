@@ -233,20 +233,30 @@ class StudyClock(QWidget):
         self.info_label.hide()
 
         # Controls: Icons (einheitlich, gut sichtbar)
-        self.start_btn = QPushButton()
-        self.stop_btn = QPushButton()
+        self.play_pause_btn = QPushButton()
+        self.play_pause_btn.setIcon(
+            tint_icon(self.style().standardIcon(QStyle.SP_MediaPlay))
+            )
+        self.play_pause_btn.setIconSize(QSize(18, 18))
+        self.play_pause_btn.setFixedSize(44, 32)
+        self.play_pause_btn.setStyleSheet(
+            """
+            QPushButton {
+                background: #262626;
+                border: 1px solid #3a3a3a;
+                border-radius: 10px;
+            }
+            QPushButton:hover { background: #2f2f2f; border: 1px solid #4a4a4a; }
+        """
+            )
+        self.play_pause_btn.setToolTip("Start / Pause")
+
         self.rewind_btn = QPushButton()
         self.skip_btn = QPushButton()
         self.reset_btn = QPushButton()
 
         # Icons (Qt-Standard). Reset bewusst als "Reload" ODER alternativ
         # Text-Symbol, siehe unten.
-        self.start_btn.setIcon(
-            tint_icon(self.style().standardIcon(QStyle.SP_MediaPlay))
-            )
-        self.stop_btn.setIcon(
-            tint_icon(self.style().standardIcon(QStyle.SP_MediaPause))
-            )
         self.rewind_btn.setIcon(
             tint_icon(self.style().standardIcon(QStyle.SP_MediaSeekBackward))
             )
@@ -258,7 +268,7 @@ class StudyClock(QWidget):
         self.reset_btn.setFont(QFont("Segoe UI", 12, QFont.Bold))
 
         for b in (
-                self.start_btn, self.stop_btn, self.rewind_btn, self.skip_btn,
+                self.play_pause_btn, self.rewind_btn, self.skip_btn,
                 self.reset_btn
                 ):
             b.setIconSize(QSize(18, 18))
@@ -281,8 +291,6 @@ class StudyClock(QWidget):
         # self.reset_btn.setFont(QFont("Segoe UI", 12, QFont.Bold))
 
         # Tooltips
-        self.start_btn.setToolTip("Start")
-        self.stop_btn.setToolTip("Stop")
         self.rewind_btn.setToolTip("Zurück (Phase)")
         self.skip_btn.setToolTip("Vor (Phase)")
         self.reset_btn.setToolTip("Reset")
@@ -290,8 +298,7 @@ class StudyClock(QWidget):
         ctrl_row = QHBoxLayout()
         ctrl_row.setContentsMargins(10, 4, 10, 14)
         ctrl_row.setSpacing(8)
-        ctrl_row.addWidget(self.start_btn)
-        ctrl_row.addWidget(self.stop_btn)
+        ctrl_row.addWidget(self.play_pause_btn)
         ctrl_row.addWidget(self.rewind_btn)
         ctrl_row.addWidget(self.skip_btn)
         ctrl_row.addWidget(self.reset_btn)
@@ -314,8 +321,7 @@ class StudyClock(QWidget):
         self.tick_timer.timeout.connect(self.on_tick)
 
         # Signals
-        self.start_btn.clicked.connect(self.start)
-        self.stop_btn.clicked.connect(self.pause)
+        self.play_pause_btn.clicked.connect(self.toggle_play_pause)
         self.rewind_btn.clicked.connect(self.rewind_phase)
         self.skip_btn.clicked.connect(self.skip_phase)
         self.reset_btn.clicked.connect(self.reset_all)
@@ -328,7 +334,7 @@ class StudyClock(QWidget):
         self._dragging = False
         self._drag_offset = QPoint(0, 0)
 
-        self.resize(260, 220)
+        self.resize(260, 240)
         self.update_layout_geometry()
         self.update_ui()
 
@@ -403,6 +409,7 @@ class StudyClock(QWidget):
         if not self.running:
             self.running = True
             self.tick_timer.start()
+            self.update_play_pause_icon()
 
             # passenden Infotext wiederherstellen
             if self.microbreak_active:
@@ -417,6 +424,7 @@ class StudyClock(QWidget):
     def pause(self):
         self.running = False
         self.tick_timer.stop()
+        self.update_play_pause_icon()
 
         # Info NICHT löschen, wenn Microbreak aktiv ist
         if self.microbreak_active:
@@ -622,6 +630,22 @@ class StudyClock(QWidget):
     def mouseReleaseEvent(self, event):
         self._dragging = False
         event.accept()
+
+    def toggle_play_pause(self):
+        if self.running:
+            self.pause()
+        else:
+            self.start()
+
+        self.update_play_pause_icon()
+
+    def update_play_pause_icon(self):
+        if self.running:
+            icon = self.style().standardIcon(QStyle.SP_MediaPause)
+        else:
+            icon = self.style().standardIcon(QStyle.SP_MediaPlay)
+
+        self.play_pause_btn.setIcon(tint_icon(icon))
 
 
 def main():
