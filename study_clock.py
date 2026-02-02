@@ -17,10 +17,12 @@ DEFAULT_REMIND_AT = {40 * 60, 20 * 60, 0}
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, parent, focus_min, break_min, micro_sec, goal):
+    def __init__(self, parent, focus_min, break_min, micro_sec, goal,
+                 start_unit):
         super().__init__(parent)
         self.start_units = QSpinBox()
         self.start_units.setRange(0, 50)
+        self.start_units.setValue(start_unit)
 
         self.setWindowTitle("Settings")
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
@@ -46,6 +48,7 @@ class SettingsDialog(QDialog):
         form.addRow("Pause (Min)", self.brk)
         form.addRow("Bildschirmpause (Sek)", self.micro)
         form.addRow("Ziel-Einheiten", self.goal)
+        form.addRow("Start-Einheit", self.start_units)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel
@@ -59,8 +62,10 @@ class SettingsDialog(QDialog):
         self.setLayout(layout)
 
     def values(self):
-        return (self.focus.value(), self.brk.value(), self.micro.value(),
-                self.goal.value())
+        return (
+            self.focus.value(), self.brk.value(), self.micro.value(),
+            self.goal.value(), self.start_units.value()
+            )
 
 
 class StudyClock(QWidget):
@@ -294,16 +299,21 @@ class StudyClock(QWidget):
     def open_settings(self):
         dlg = SettingsDialog(
             self, self.focus_min, self.break_min, self.micro_sec,
-            self.session_goal
+            self.session_goal, self.session_count
             )
         if dlg.exec() == QDialog.Accepted:
-            (self.focus_min, self.break_min, self.micro_sec,
-             self.session_goal) = dlg.values()
+            (
+                self.focus_min, self.break_min, self.micro_sec,
+                self.session_goal, start_unit
+                ) = dlg.values()
+
+            self.session_count = int(start_unit)
 
             self.qs.setValue("focus_min", self.focus_min)
             self.qs.setValue("break_min", self.break_min)
             self.qs.setValue("micro_sec", self.micro_sec)
             self.qs.setValue("session_goal", self.session_goal)
+            self.qs.setValue("session_count", self.session_count)
 
             # Wenn gerade nicht läuft: direkt auf neue Zeiten setzen
             if not self.running and not self.microbreak_active:
