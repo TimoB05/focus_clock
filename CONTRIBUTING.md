@@ -15,3 +15,7 @@ Contributions should:
 2. Create a feature branch:
    ```bash
    git checkout -b feature/my-change
+3. Make your changes
+4. Ensure the app still runs with:
+python -m studyclock
+5. Open a Pull Request
