@@ -1,4 +1,4 @@
-# StudyClock ⏱️
+# StudyClock
 
 StudyClock is a **minimal, distraction-free study timer for Windows**.
 It is designed to stay always on top, keep you focused, and provide clear
@@ -31,3 +31,4 @@ feedback about your study efficiency without unnecessary complexity.
 
 ### The executable will be located in:
 `dist/StudyClock/StudyClock.exe`
+
