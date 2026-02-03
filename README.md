@@ -26,7 +26,10 @@ feedback about your study efficiency without unnecessary complexity.
 `python -m studyclock`
 
 ### Build standalone executable (Windows)
-`pyinstaller --onedir --noconsole --name StudyClock src/studyclock/app.py`
+`pyinstaller --onedir --noconsole --name StudyClock src/studyclock/app.py --icon=favicon.ico`
+
+macOS:
+`pyinstaller --onedir --noconsole --name StudyClock src/studyclock/app.py --icon=favicon.icns`
 
 
 ### The executable will be located in:
