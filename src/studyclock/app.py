@@ -2,6 +2,7 @@ import os
 import sys
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QIcon
 
 if __package__ is None or __package__ == "":
     # Running as a script (e.g., PyInstaller)
@@ -18,6 +19,7 @@ else:
 
 def main():
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon("icon.png"))
     w = StudyClockWindow()
     w.show()
     sys.exit(app.exec())
