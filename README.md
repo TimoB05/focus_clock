@@ -1,8 +1,8 @@
-# StudyClock
+# FocusClock
 
-StudyClock is a **minimal, distraction-free study timer for Windows**.
+FocusClock is a **minimal, distraction-free focus timer for Windows**.
 It is designed to stay always on top, keep you focused, and provide clear
-feedback about your study efficiency without unnecessary complexity.
+feedback about your focus efficiency without unnecessary complexity.
 
 ## Features
 
@@ -23,15 +23,15 @@ feedback about your study efficiency without unnecessary complexity.
 `pip install -r requirements.txt`
 
 ### Run locally
-`python -m studyclock`
+`python -m focusclock`
 
 ### Build standalone executable (Windows)
-`pyinstaller --onedir --noconsole --name StudyClock src/studyclock/app.py --icon=favicon.ico`
+`pyinstaller --onedir --noconsole --name FocusClock src/focusclock/app.py --icon=favicon.ico`
 
 macOS:
-`pyinstaller --onedir --noconsole --name StudyClock src/studyclock/app.py --icon=favicon.icns`
+`pyinstaller --onedir --noconsole --name FocusClock src/focusclock/app.py --icon=favicon.icns`
 
 
 ### The executable will be located in:
-`dist/StudyClock/StudyClock.exe`
+`dist/FocusClock/FocusClock.exe`
 

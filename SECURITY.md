@@ -1,7 +1,7 @@
 # Security Policy
 
 ## Supported Versions
-Only the latest version of StudyClock is supported.
+Only the latest version of FocusClock is supported.
 
 ## Reporting a Vulnerability
 If you discover a security issue either:

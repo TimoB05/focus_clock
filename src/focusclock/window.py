@@ -1,21 +1,25 @@
 from __future__ import annotations
-import sys
 
-from PySide6.QtCore import QPoint, QSettings, QSize, Qt, QTimer, QEvent
-from PySide6.QtGui import QAction, QFont, QIcon, QPalette, QColor
+import csv
+import sys
+from datetime import datetime
+
+from PySide6.QtCore import QEvent, QPoint, QSettings, QSize, Qt, QTimer
+from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPalette
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QHBoxLayout, QLabel, QMenu, QPushButton, QStyle,
-    QSystemTrayIcon, QVBoxLayout, QWidget
+    QApplication, QDialog, QFileDialog, QHBoxLayout,
+    QLabel, QMenu, QMessageBox, QPushButton, QStyle, QSystemTrayIcon,
+    QVBoxLayout, QWidget
     )
 
-from .logic import ClockState, StudyClockLogic
+from .logic import ClockState, FocusClockLogic
 from .settings_dialog import SettingsDialog
 from .stats_dialog import \
     StatsDialog
 from .util import beep, format_hm, format_time_mmss, tint_icon
 
 
-class StudyClockWindow(QWidget):
+class FocusClockWindow(QWidget):
     def __init__(self):
         super().__init__()
         self._ui_ready = False
@@ -31,7 +35,7 @@ class StudyClockWindow(QWidget):
         self.setWindowFlags(flags)
 
         # ---------- Settings store ----------
-        self.qs = QSettings("StudyClock", "StudyClockApp")
+        self.qs = QSettings("FocusClock", "FocusClockApp")
 
         # ---------- Load persistent config ----------
         focus_min = int(self.qs.value("focus_min", 50))
@@ -79,7 +83,7 @@ class StudyClockWindow(QWidget):
             focus_work_sec=focus_work_sec,
             )
 
-        self.logic = StudyClockLogic(
+        self.logic = FocusClockLogic(
             state=state, on_change=self.update_ui, on_beep=beep
             )
 
@@ -90,7 +94,7 @@ class StudyClockWindow(QWidget):
         self.wrapper.setObjectName("wrapper")
 
         # ---------- Tray ----------
-        self.tray = QSystemTrayIcon(QIcon())
+        self.tray = QSystemTrayIcon(QIcon("icon.png"))
         menu = QMenu()
 
         restore_action = QAction("Open")
@@ -101,6 +105,11 @@ class StudyClockWindow(QWidget):
         menu.addAction(restore_action)
         menu.addAction(quit_action)
 
+        export_action = QAction("Export to CSV...")
+        export_action.triggered.connect(self.export_to_csv)
+
+        menu.addAction(export_action)
+
         self.tray.setContextMenu(menu)
         self.tray.show()
         self.tray.activated.connect(self.on_tray_activated)
@@ -110,6 +119,9 @@ class StudyClockWindow(QWidget):
         self.btn_stats = QPushButton("📊")
         self.btn_lunch = QPushButton("L")
         self.btn_lunch.setToolTip("Lunch Break (60 Min)")
+        self.btn_export = QPushButton("CSV")
+        self.btn_export.setToolTip("Export to CSV")
+        self.btn_export.clicked.connect(self.export_to_csv)
 
         self.btn_min = QPushButton("—")
         self.btn_close = QPushButton("×")
@@ -121,15 +133,16 @@ class StudyClockWindow(QWidget):
         top_row.addWidget(self.btn_settings)
         top_row.addWidget(self.btn_stats)
         top_row.addWidget(self.btn_lunch)
+        top_row.addWidget(self.btn_export)
         top_row.addStretch(1)
         top_row.addWidget(self.btn_min)
         top_row.addWidget(self.btn_close)
 
         # ---------- Labels ----------
-        self.studytime_label = QLabel("")
-        self.studytime_label.setFont(QFont("Segoe UI", 9))
-        self.studytime_label.setAlignment(Qt.AlignCenter)
-        self.studytime_label.setStyleSheet("color: #bbb;")
+        self.focustime_label = QLabel("")
+        self.focustime_label.setFont(QFont("Segoe UI", 9))
+        self.focustime_label.setAlignment(Qt.AlignCenter)
+        self.focustime_label.setStyleSheet("color: #bbb;")
 
         self.mode_label = QLabel("")
         self.mode_label.setAlignment(Qt.AlignCenter)
@@ -158,13 +171,22 @@ class StudyClockWindow(QWidget):
         self.reset_btn = QPushButton()
 
         self.play_pause_btn.setIcon(
-            tint_icon(self.style().standardIcon(QStyle.SP_MediaPlay), color=self._icon_color)
+            tint_icon(
+                self.style().standardIcon(QStyle.SP_MediaPlay),
+                color=self._icon_color
+                )
             )
         self.rewind_btn.setIcon(
-            tint_icon(self.style().standardIcon(QStyle.SP_MediaSeekBackward), color=self._icon_color)
+            tint_icon(
+                self.style().standardIcon(QStyle.SP_MediaSeekBackward),
+                color=self._icon_color
+                )
             )
         self.skip_btn.setIcon(
-            tint_icon(self.style().standardIcon(QStyle.SP_MediaSeekForward), color=self._icon_color)
+            tint_icon(
+                self.style().standardIcon(QStyle.SP_MediaSeekForward),
+                color=self._icon_color
+                )
             )
         self.reset_btn.setText("⟲")
         self.reset_btn.setFont(QFont("Segoe UI", 12, QFont.Bold))
@@ -207,7 +229,7 @@ class StudyClockWindow(QWidget):
         wrap_layout.setContentsMargins(0, 0, 0, 0)
         wrap_layout.setSpacing(6)
         wrap_layout.addLayout(top_row)
-        wrap_layout.addWidget(self.studytime_label)
+        wrap_layout.addWidget(self.focustime_label)
         wrap_layout.addWidget(self.mode_label)
         wrap_layout.addWidget(self.timer_label)
         wrap_layout.addWidget(self.counter_label)
@@ -263,7 +285,7 @@ class StudyClockWindow(QWidget):
 
         # progress
         done, left, total, pct = self.logic.calc_focus_progress()
-        self.studytime_label.setText(
+        self.focustime_label.setText(
             f"{format_hm(done)}/{format_hm(total)} ({pct}%)"
             )
         self.counter_label.setText(
@@ -277,7 +299,10 @@ class StudyClockWindow(QWidget):
             self.timer_label.setText("Finished")
             self.timer_label.setStyleSheet("color: #7CFC98;")
             self.play_pause_btn.setIcon(
-                tint_icon(self.style().standardIcon(QStyle.SP_MediaPlay), color=self._icon_color)
+                tint_icon(
+                    self.style().standardIcon(QStyle.SP_MediaPlay),
+                    color=self._icon_color
+                    )
                 )
             if self.tick_timer.isActive():
                 self.tick_timer.stop()
@@ -323,7 +348,10 @@ class StudyClockWindow(QWidget):
             self.mode_label.setStyleSheet("color: #ff6b6b;")
             self.timer_label.setStyleSheet("color: #ff6b6b;")
             self.play_pause_btn.setIcon(
-                tint_icon(self.style().standardIcon(QStyle.SP_MediaPlay), color=self._icon_color)
+                tint_icon(
+                    self.style().standardIcon(QStyle.SP_MediaPlay),
+                    color=self._icon_color
+                    )
                 )
             if self.tick_timer.isActive():
                 self.tick_timer.stop()
@@ -340,7 +368,10 @@ class StudyClockWindow(QWidget):
 
             self.mode_label.setStyleSheet("color: #888;")
             self.play_pause_btn.setIcon(
-                tint_icon(self.style().standardIcon(QStyle.SP_MediaPause), color=self._icon_color)
+                tint_icon(
+                    self.style().standardIcon(QStyle.SP_MediaPause),
+                    color=self._icon_color
+                    )
                 )
             if not self.tick_timer.isActive():
                 self.tick_timer.start()
@@ -353,7 +384,7 @@ class StudyClockWindow(QWidget):
         t = event.type()
         if t in (
                 QEvent.Type.PaletteChange, QEvent.Type.ApplicationPaletteChange
-        ):
+                ):
             self.apply_theme()
             self.update_ui()
             return
@@ -396,7 +427,8 @@ class StudyClockWindow(QWidget):
                     border-radius: 10px;
                     color: #eee;
                 }
-                QPushButton:hover { background: #2f2f2f; border: 1px solid #4a4a4a; }
+                QPushButton:hover { background: #2f2f2f; border: 1px solid 
+                #4a4a4a; }
                 QPushButton:pressed { background: #1f1f1f; }
             """
             icon_color = QColor("#eee")
@@ -427,7 +459,8 @@ class StudyClockWindow(QWidget):
                     border-radius: 10px;
                     color: #111;
                 }
-                QPushButton:hover { background: #f0f0f0; border: 1px solid #bdbdbd; }
+                QPushButton:hover { background: #f0f0f0; border: 1px solid 
+                #bdbdbd; }
                 QPushButton:pressed { background: #e2e2e2; }
             """
             icon_color = QColor("#111")
@@ -436,14 +469,14 @@ class StudyClockWindow(QWidget):
 
         self.wrapper.setStyleSheet(wrapper_css)
 
-        self.studytime_label.setStyleSheet(f"color: {muted};")
+        self.focustime_label.setStyleSheet(f"color: {muted};")
         self.mode_label.setStyleSheet(f"color: {subtle};")
         self.info_label.setStyleSheet(f"color: {muted};")
 
         for b in (
                 self.play_pause_btn, self.rewind_btn, self.skip_btn,
                 self.reset_btn
-        ):
+                ):
             b.setStyleSheet(ctrl_css)
 
         # Standard-Icons passend einfärben
@@ -561,3 +594,54 @@ class StudyClockWindow(QWidget):
     def mouseReleaseEvent(self, event):
         self._dragging = False
         event.accept()
+
+    def export_to_csv(self):
+        # Close current segment so the export is complete up to "now"
+        self.logic._close_segment()  # closes at now
+
+        entries = list(self.logic.s.log)
+        if not entries:
+            QMessageBox.information(self, "Export", "No data to export yet.")
+            return
+
+        default_name = datetime.now().strftime("focusclock_%d.%m.%Y.csv")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export to CSV", default_name, "CSV Files (*.csv)"
+            )
+        if not path:
+            return
+
+        def fmt(dt: datetime) -> str:
+            return dt.strftime("%d.%m.%Y %H:%M")
+
+        total_focus = 0
+        total_break = 0
+        total_pause = 0
+
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(
+                ["Type", "Start", "End", "DurationMinutes", "DurationSeconds"]
+                )
+
+            for e in entries:
+                dur = e.duration_sec
+                w.writerow(
+                    [e.kind, fmt(e.start), fmt(e.end), round(dur / 60, 2), dur]
+                    )
+
+                if e.kind == "FOCUS":
+                    total_focus += dur
+                elif e.kind in ("BREAK", "LUNCH", "SCREEN_BREAK"):
+                    total_break += dur
+                elif e.kind == "PAUSED":
+                    total_pause += dur
+
+            w.writerow([])
+            w.writerow(["Totals"])
+            w.writerow(["FocusMinutes", round(total_focus / 60, 2)])
+            w.writerow(["BreakMinutes", round(total_break / 60, 2)])
+            w.writerow(["PausedMinutes", round(total_pause / 60, 2)])
+            w.writerow(["NetWorkMinutes", round((total_focus) / 60, 2)])
+
+        QMessageBox.information(self, "Export", "CSV export completed.")
