@@ -11,17 +11,17 @@ if __package__ is None or __package__ == "":
             os.path.join(os.path.dirname(__file__), "..")
             )
         )
-    from studyclock.window import StudyClockWindow
+    from focusclock.window import FocusClockWindow
 else:
     # Running as a package
-    from .window import StudyClockWindow
+    from .window import FocusClockWindow
 
 
 def main():
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon("icon.png"))
 
-    w = StudyClockWindow()
+    w = FocusClockWindow()
     w.show()
     sys.exit(app.exec())
 

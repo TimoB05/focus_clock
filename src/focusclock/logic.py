@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Callable, Set
 
 DEFAULT_REMIND_AT = {40 * 60, 20 * 60, 0}
@@ -36,8 +37,24 @@ class ClockState:
     microbreak_sec: int = 0
     focus_work_sec: int = 0
 
+    # Logging
+    log: list[LogEntry] = field(default_factory=list)
+    _segment_kind: str = ""
+    _segment_start: datetime | None = None
 
-class StudyClockLogic:
+
+@dataclass
+class LogEntry:
+    kind: str  # "FOCUS", "BREAK", "LUNCH", "SCREEN_BREAK", "PAUSED"
+    start: datetime
+    end: datetime
+
+    @property
+    def duration_sec(self) -> int:
+        return max(0, int((self.end - self.start).total_seconds()))
+
+
+class FocusClockLogic:
     def __init__(
         self,
         state: ClockState,
@@ -79,12 +96,14 @@ class StudyClockLogic:
         self.s.mode = "break"
         self.s.remaining = self.s.break_min * 60
         self._beep()
+        self._roll_segment_if_needed()
 
     def switch_to_focus(self):
         self.s.mode = "focus"
         self.s.remaining = self.s.focus_min * 60
         self.s.reminded_this_focus.clear()
         self._beep()
+        self._roll_segment_if_needed()
 
     def start_lunch_break(self):
         if self.s.finished:
@@ -100,6 +119,7 @@ class StudyClockLogic:
         self.s.remaining = 60 * 60
         self.s.running = True
         self._on_change()
+        self._roll_segment_if_needed()
 
     # ---------- microbreak ----------
     def start_microbreak(self, after_micro: str):
@@ -115,6 +135,7 @@ class StudyClockLogic:
         self.s.after_micro = after_micro
         self._beep()
         self._on_change()
+        self._roll_segment_if_needed()
 
     def end_microbreak(self):
         self._beep()
@@ -130,6 +151,7 @@ class StudyClockLogic:
 
         self.s.after_micro = ""
         self._on_change()
+        self._roll_segment_if_needed()
 
     # ---------- Completion ----------
     def finish_focus_unit(self, use_microbreak_before_break: bool = True):
@@ -154,10 +176,12 @@ class StudyClockLogic:
             return
         if not self.s.running:
             self.s.running = True
+            self._roll_segment_if_needed()
             self._on_change()
 
     def pause(self):
         self.s.running = False
+        self._roll_segment_if_needed()
         self._on_change()
 
     def toggle_play_pause(self):
@@ -185,6 +209,12 @@ class StudyClockLogic:
         self.s.paused_sec = 0
         self.s.microbreak_sec = 0
         self.s.focus_work_sec = 0
+
+        # Log reset
+        self.s.log.clear()
+        self.s._segment_kind = ""
+        self.s._segment_start = None
+        self._on_change()
 
         self._on_change()
 
@@ -284,6 +314,7 @@ class StudyClockLogic:
         starts/stops the QTimer)."""
         if self.s.finished or (not self.s.running):
             return
+        self._roll_segment_if_needed()
 
         self.s.total_open_sec += 1
 
@@ -367,3 +398,48 @@ class StudyClockLogic:
                     self.s.break_min * 60)
 
         self._on_change()
+
+    def _now(self) -> datetime:
+        return datetime.now()
+
+    def _current_kind(self) -> str:
+        # What should be logged right now?
+        if self.s.microbreak_active:
+            return "SCREEN_BREAK"
+        if not self.s.running:
+            return "PAUSED"
+        if self.s.mode == "focus":
+            return "FOCUS"
+        if self.s.mode == "break":
+            return "BREAK"
+        if self.s.mode == "lunch":
+            return "LUNCH"
+        return self.s.mode.upper()
+
+    def _close_segment(self, end: datetime | None = None):
+        if self.s._segment_start is None or not self.s._segment_kind:
+            return
+        end = end or self._now()
+        self.s.log.append(
+            LogEntry(self.s._segment_kind, self.s._segment_start, end)
+            )
+        self.s._segment_kind = ""
+        self.s._segment_start = None
+
+    def _open_segment(self, kind: str, start: datetime | None = None):
+        self.s._segment_kind = kind
+        self.s._segment_start = start or self._now()
+
+    def _roll_segment_if_needed(self):
+        """Call whenever state changes in a way that should start a new log
+        segment."""
+        now = self._now()
+        new_kind = self._current_kind()
+
+        if self.s._segment_start is None:
+            self._open_segment(new_kind, now)
+            return
+
+        if new_kind != self.s._segment_kind:
+            self._close_segment(now)
+            self._open_segment(new_kind, now)

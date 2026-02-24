@@ -1,9 +1,9 @@
-# Contributing to StudyClock
+# Contributing to FocusClock
 
 Thanks for your interest in contributing!
 
 ## Scope
-StudyClock is intentionally minimal.
+FocusClock is intentionally minimal.
 Contributions should:
 - Improve stability or clarity
 - Keep UI minimal and distraction-free
@@ -17,5 +17,5 @@ Contributions should:
    git checkout -b feature/my-change
 3. Make your changes
 4. Ensure the app still runs with:
-python -m studyclock
+python -m focusclock
 5. Open a Pull Request
