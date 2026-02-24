@@ -1,7 +1,8 @@
 from __future__ import annotations
+import sys
 
-from PySide6.QtCore import QPoint, QSettings, QSize, Qt, QTimer
-from PySide6.QtGui import QAction, QFont, QIcon
+from PySide6.QtCore import QPoint, QSettings, QSize, Qt, QTimer, QEvent
+from PySide6.QtGui import QAction, QFont, QIcon, QPalette, QColor
 from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QLabel, QMenu, QPushButton, QStyle,
     QSystemTrayIcon, QVBoxLayout, QWidget
@@ -17,6 +18,17 @@ from .util import beep, format_hm, format_time_mmss, tint_icon
 class StudyClockWindow(QWidget):
     def __init__(self):
         super().__init__()
+        self._ui_ready = False
+        self._icon_color = QColor("#eee")  # Default bis apply_theme läuft
+
+        flags = Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+
+        if sys.platform == "darwin":
+            flags |= Qt.Window
+        else:
+            flags |= Qt.Tool
+
+        self.setWindowFlags(flags)
 
         # ---------- Settings store ----------
         self.qs = QSettings("StudyClock", "StudyClockApp")
@@ -72,31 +84,10 @@ class StudyClockWindow(QWidget):
             )
 
         # ---------- Window flags / style ----------
-        self.setWindowFlags(
-            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
-            )
         self.setAttribute(Qt.WA_TranslucentBackground, True)
 
         self.wrapper = QWidget(self)
         self.wrapper.setObjectName("wrapper")
-        self.wrapper.setStyleSheet(
-            """
-                        QWidget#wrapper {
-                            background: #111;
-                            border: 1px solid #333;
-                            border-radius: 14px;
-                        }
-                        QLabel { color: #eee; }
-                        QPushButton {
-                            background: transparent;
-                            color: #eee;
-                            border: none;
-                            padding: 2px 6px;
-                            border-radius: 6px;
-                        }
-                        QPushButton:hover { background: #222; }
-                    """
-            )
 
         # ---------- Tray ----------
         self.tray = QSystemTrayIcon(QIcon())
@@ -167,13 +158,13 @@ class StudyClockWindow(QWidget):
         self.reset_btn = QPushButton()
 
         self.play_pause_btn.setIcon(
-            tint_icon(self.style().standardIcon(QStyle.SP_MediaPlay))
+            tint_icon(self.style().standardIcon(QStyle.SP_MediaPlay), color=self._icon_color)
             )
         self.rewind_btn.setIcon(
-            tint_icon(self.style().standardIcon(QStyle.SP_MediaSeekBackward))
+            tint_icon(self.style().standardIcon(QStyle.SP_MediaSeekBackward), color=self._icon_color)
             )
         self.skip_btn.setIcon(
-            tint_icon(self.style().standardIcon(QStyle.SP_MediaSeekForward))
+            tint_icon(self.style().standardIcon(QStyle.SP_MediaSeekForward), color=self._icon_color)
             )
         self.reset_btn.setText("⟲")
         self.reset_btn.setFont(QFont("Segoe UI", 12, QFont.Bold))
@@ -235,7 +226,7 @@ class StudyClockWindow(QWidget):
 
         # ---------- Signals ----------
         self.btn_close.clicked.connect(QApplication.quit)
-        self.btn_min.clicked.connect(self.hide)
+        self.btn_min.clicked.connect(self.showMinimized)
         self.btn_settings.clicked.connect(self.open_settings)
         self.btn_stats.clicked.connect(self.open_stats)
         self.btn_lunch.clicked.connect(self.on_lunch)
@@ -250,10 +241,12 @@ class StudyClockWindow(QWidget):
         self._drag_offset = QPoint(0, 0)
 
         # Size
-        self.resize(220, 220)
+        self.resize(200, 200)
         self.update_layout_geometry()
 
         # initial UI
+        self._ui_ready = True
+        self.apply_theme()
         self.update_ui()
 
     # ---------- Geometry ----------
@@ -284,7 +277,7 @@ class StudyClockWindow(QWidget):
             self.timer_label.setText("Finished")
             self.timer_label.setStyleSheet("color: #7CFC98;")
             self.play_pause_btn.setIcon(
-                tint_icon(self.style().standardIcon(QStyle.SP_MediaPlay))
+                tint_icon(self.style().standardIcon(QStyle.SP_MediaPlay), color=self._icon_color)
                 )
             if self.tick_timer.isActive():
                 self.tick_timer.stop()
@@ -293,15 +286,32 @@ class StudyClockWindow(QWidget):
         # microbreak display (optional)
         if s.microbreak_active:
             self.mode_label.setText("SCREEN BREAK")
-            self.mode_label.setStyleSheet("color: #888;")
+            # Basisfarbe nicht hart setzen (kommt aus apply_theme),
+            # nur die Timer-Farbe bleibt "warm".
             self.timer_label.setText(
-                format_time_mmss(max(1, s.microbreak_remaining)))
-            self.timer_label.setStyleSheet("color: #FFD27C;")  # warm/yellow
-            self.play_pause_btn.setIcon(
-                tint_icon(self.style().standardIcon(QStyle.SP_MediaPause))
+                format_time_mmss(max(1, s.microbreak_remaining))
                 )
-            if not self.tick_timer.isActive() and s.running:
-                self.tick_timer.start()
+            self.timer_label.setStyleSheet("color: #FFD27C;")
+
+            if s.running:
+                self.play_pause_btn.setIcon(
+                    tint_icon(
+                        self.style().standardIcon(QStyle.SP_MediaPause),
+                        color=self._icon_color
+                        )
+                    )
+                if not self.tick_timer.isActive():
+                    self.tick_timer.start()
+            else:
+                self.play_pause_btn.setIcon(
+                    tint_icon(
+                        self.style().standardIcon(QStyle.SP_MediaPlay),
+                        color=self._icon_color
+                        )
+                    )
+                if self.tick_timer.isActive():
+                    self.tick_timer.stop()
+
             return
 
         # timer text
@@ -313,7 +323,7 @@ class StudyClockWindow(QWidget):
             self.mode_label.setStyleSheet("color: #ff6b6b;")
             self.timer_label.setStyleSheet("color: #ff6b6b;")
             self.play_pause_btn.setIcon(
-                tint_icon(self.style().standardIcon(QStyle.SP_MediaPlay))
+                tint_icon(self.style().standardIcon(QStyle.SP_MediaPlay), color=self._icon_color)
                 )
             if self.tick_timer.isActive():
                 self.tick_timer.stop()
@@ -330,10 +340,132 @@ class StudyClockWindow(QWidget):
 
             self.mode_label.setStyleSheet("color: #888;")
             self.play_pause_btn.setIcon(
-                tint_icon(self.style().standardIcon(QStyle.SP_MediaPause))
+                tint_icon(self.style().standardIcon(QStyle.SP_MediaPause), color=self._icon_color)
                 )
             if not self.tick_timer.isActive():
                 self.tick_timer.start()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if not getattr(self, "_ui_ready", False):
+            return
+
+        t = event.type()
+        if t in (
+                QEvent.Type.PaletteChange, QEvent.Type.ApplicationPaletteChange
+        ):
+            self.apply_theme()
+            self.update_ui()
+            return
+
+        if hasattr(
+                QEvent.Type, "ThemeChange"
+                ) and t == QEvent.Type.ThemeChange:
+            self.apply_theme()
+            self.update_ui()
+
+    def apply_theme(self):
+        app = QApplication.instance()
+        pal = app.palette()
+        bg = pal.color(QPalette.Window)
+        dark = bg.lightness() < 128
+
+        if dark:
+            muted = "#bbb"
+            subtle = "#888"
+            wrapper_css = """
+                QWidget#wrapper {
+                    background: #111;
+                    border: 1px solid #333;
+                    border-radius: 14px;
+                }
+                QLabel { color: #eee; }
+                QPushButton {
+                    background: transparent;
+                    color: #eee;
+                    border: none;
+                    padding: 2px 6px;
+                    border-radius: 6px;
+                }
+                QPushButton:hover { background: #222; }
+            """
+            ctrl_css = """
+                QPushButton {
+                    background: #262626;
+                    border: 1px solid #3a3a3a;
+                    border-radius: 10px;
+                    color: #eee;
+                }
+                QPushButton:hover { background: #2f2f2f; border: 1px solid #4a4a4a; }
+                QPushButton:pressed { background: #1f1f1f; }
+            """
+            icon_color = QColor("#eee")
+
+        else:
+            muted = "#444"
+            subtle = "#666"
+            wrapper_css = """
+                QWidget#wrapper {
+                    background: #f5f5f5;
+                    border: 1px solid #cfcfcf;
+                    border-radius: 14px;
+                }
+                QLabel { color: #111; }
+                QPushButton {
+                    background: transparent;
+                    color: #111;
+                    border: none;
+                    padding: 2px 6px;
+                    border-radius: 6px;
+                }
+                QPushButton:hover { background: #e9e9e9; }
+            """
+            ctrl_css = """
+                QPushButton {
+                    background: #ffffff;
+                    border: 1px solid #cfcfcf;
+                    border-radius: 10px;
+                    color: #111;
+                }
+                QPushButton:hover { background: #f0f0f0; border: 1px solid #bdbdbd; }
+                QPushButton:pressed { background: #e2e2e2; }
+            """
+            icon_color = QColor("#111")
+
+        self._icon_color = icon_color
+
+        self.wrapper.setStyleSheet(wrapper_css)
+
+        self.studytime_label.setStyleSheet(f"color: {muted};")
+        self.mode_label.setStyleSheet(f"color: {subtle};")
+        self.info_label.setStyleSheet(f"color: {muted};")
+
+        for b in (
+                self.play_pause_btn, self.rewind_btn, self.skip_btn,
+                self.reset_btn
+        ):
+            b.setStyleSheet(ctrl_css)
+
+        # Standard-Icons passend einfärben
+        self.rewind_btn.setIcon(
+            tint_icon(
+                self.style().standardIcon(QStyle.SP_MediaSeekBackward),
+                color=self._icon_color
+                )
+            )
+        self.skip_btn.setIcon(
+            tint_icon(
+                self.style().standardIcon(QStyle.SP_MediaSeekForward),
+                color=self._icon_color
+                )
+            )
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not getattr(self, "_ui_ready", False):
+            return
+        self.apply_theme()
+        self.update_ui()
 
     # ---------- Button handlers ----------
     def on_toggle_play_pause(self):

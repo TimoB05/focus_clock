@@ -1,6 +1,8 @@
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
-    QDialog, QDialogButtonBox, QFormLayout, QSpinBox, QVBoxLayout
+    QApplication, QDialog, QDialogButtonBox,
+    QFormLayout, QSpinBox, QVBoxLayout
     )
 
 
@@ -10,6 +12,11 @@ class SettingsDialog(QDialog):
         goal: int, start_unit: int
         ):
         super().__init__(parent)
+
+        app = QApplication.instance()
+        bg = app.palette().color(QPalette.Window)
+        dark = bg.lightness() < 128
+        self.setStyleSheet("color: #eee;" if dark else "color: #111;")
 
         self.setWindowTitle("Settings")
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)

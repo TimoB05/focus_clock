@@ -1,6 +1,8 @@
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+from PySide6.QtGui import QFont, QPalette
+from PySide6.QtWidgets import (
+    QApplication, QDialog, QDialogButtonBox, QLabel,
+    QVBoxLayout
+    )
 
 from .util import format_hm
 
@@ -12,7 +14,6 @@ class StatsDialog(QDialog):
         ):
         super().__init__(parent)
         self.setWindowTitle("Statistics")
-        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
         total = max(1, int(total_open_sec))
         running = int(total_open_sec)  # only running if running==True
@@ -29,7 +30,11 @@ class StatsDialog(QDialog):
 
         lbl = QLabel(text)
         lbl.setFont(QFont("Segoe UI", 10))
-        lbl.setStyleSheet("color: #eee;")
+
+        app = QApplication.instance()
+        bg = app.palette().color(QPalette.Window)
+        dark = bg.lightness() < 128
+        lbl.setStyleSheet("color: #eee;" if dark else "color: #111;")
 
         btns = QDialogButtonBox(QDialogButtonBox.Ok)
         btns.accepted.connect(self.accept)

@@ -117,6 +117,7 @@ class StudyClockLogic:
         self._on_change()
 
     def end_microbreak(self):
+        self._beep()
         self.s.microbreak_active = False
         self.s.microbreak_remaining = 0
 
@@ -209,7 +210,10 @@ class StudyClockLogic:
         if self.s.finished:
             return
 
-        # Microbreak: back = cancel, continue in phase
+        # Spotify-like threshold
+        THRESHOLD_SEC = 10
+
+        # Microbreak: back = cancel microbreak, continue in phase
         if self.s.microbreak_active:
             self.s.microbreak_active = False
             self.s.microbreak_remaining = 0
@@ -217,22 +221,62 @@ class StudyClockLogic:
             self._on_change()
             return
 
-        # If no unit has been completed yet and focus: no change into Pause
-        if self.s.completed_units == 0 and self.s.mode == "focus":
-            self.s.remaining = self.s.focus_min * 60
+        # Helper: elapsed seconds in current phase
+        def elapsed_in_phase(total_sec: int) -> int:
+            return max(0, total_sec - int(self.s.remaining))
+
+        if self.s.mode == "focus":
+            total = self.s.focus_min * 60
+            elapsed = elapsed_in_phase(total)
+
+            # If we're not near the start: rewind to phase start
+            if elapsed > THRESHOLD_SEC:
+                self.s.remaining = total
+                self._on_change()
+                return
+
+            # Near start: go to previous phase if possible
+            if self.s.completed_units == 0:
+                # no previous break exists -> just stay at start of focus
+                self.s.remaining = total
+                self._on_change()
+                return
+
+            # go to previous break (and decrement unit)
+            self.s.completed_units -= 1
+            self.switch_to_break()
             self._on_change()
             return
 
         if self.s.mode == "break":
+            total = self.s.break_min * 60
+            elapsed = elapsed_in_phase(total)
+
+            if elapsed > THRESHOLD_SEC:
+                self.s.remaining = total
+                self._on_change()
+                return
+
+            # Near start: go to focus
             self.switch_to_focus()
             self._on_change()
             return
 
-        if self.s.mode == "focus":
-            if self.s.completed_units > 0:
-                self.s.completed_units -= 1
-            self.switch_to_break()
+        if self.s.mode == "lunch":
+            total = 60 * 60
+            elapsed = elapsed_in_phase(total)
+
+            if elapsed > THRESHOLD_SEC:
+                self.s.remaining = total
+                self._on_change()
+                return
+
+            # Near start: restore previous phase
+            self.s.mode = self.s.pre_lunch_mode
+            self.s.remaining = self.s.pre_lunch_remaining
+            self.s.running = self.s.pre_lunch_was_running
             self._on_change()
+            return
 
     # ---------- Tick handlers ----------
     def on_tick(self):

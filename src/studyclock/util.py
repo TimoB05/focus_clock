@@ -1,3 +1,5 @@
+import sys
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication
@@ -18,7 +20,11 @@ def format_hm(sec: int) -> str:
 
 
 def beep():
-    QApplication.beep()
+    if sys.platform == "win32":
+        import winsound
+        winsound.MessageBeep(winsound.MB_ICONINFORMATION)
+    else:
+        QApplication.beep()
 
 
 def tint_icon(

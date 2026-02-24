@@ -1,8 +1,8 @@
 import os
 import sys
 
+from PySide6.QtGui import QIcon, QPalette
 from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QIcon
 
 if __package__ is None or __package__ == "":
     # Running as a script (e.g., PyInstaller)
@@ -20,9 +20,16 @@ else:
 def main():
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon("icon.png"))
+
     w = StudyClockWindow()
     w.show()
     sys.exit(app.exec())
+
+
+def is_dark_mode(app: QApplication) -> bool:
+    pal = app.palette()
+    bg = pal.color(QPalette.Window)
+    return bg.lightness() < 128
 
 
 if __name__ == "__main__":
