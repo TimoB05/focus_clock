@@ -15,6 +15,15 @@ class ClockState:
     micro_sec: int = 60
     session_goal: int = 7
 
+    # profile switch
+    profile: str = "study"  # "study" or "worklog"
+    work_elapsed_sec: int = 0
+
+    # Worklog persistence / flushing
+    last_export_date: str = ""  # "YYYY-MM-DD"
+    flushed_log_idx: int = 0  # index into log[] that is already written to
+    # disk
+
     # Runtime state
     mode: str = "focus"  # focus / break / lunch
     remaining: int = 50 * 60
@@ -54,6 +63,10 @@ class LogEntry:
         return max(0, int((self.end - self.start).total_seconds()))
 
 
+def _now() -> datetime:
+    return datetime.now()
+
+
 class FocusClockLogic:
     def __init__(
         self,
@@ -86,6 +99,8 @@ class FocusClockLogic:
 
     # ---------- State transitions ----------
     def mark_finished(self):
+        if self.s.profile == "worklog":
+            return
         self.s.finished = True
         self.s.running = False
         self.s.microbreak_active = False
@@ -191,6 +206,19 @@ class FocusClockLogic:
             self.start()
 
     def reset_all(self):
+        # Worklog reset: reset stopwatch + clear log (optional)
+        if self.s.profile == "worklog":
+            self.s.running = False
+            self.s.work_elapsed_sec = 0
+
+            # log optional: entweder behalten oder löschen
+            self.s.log.clear()
+            self.s._segment_kind = ""
+            self.s._segment_start = None
+
+            self._on_change()
+            return
+
         # --- running condition ---
         self.s.running = False
         self.s.mode = "focus"
@@ -219,6 +247,9 @@ class FocusClockLogic:
         self._on_change()
 
     def skip_phase(self):
+        if self.s.profile == "worklog":
+            return
+
         if self.s.finished:
             return
 
@@ -237,6 +268,9 @@ class FocusClockLogic:
         self._on_change()
 
     def rewind_phase(self):
+        if self.s.profile == "worklog":
+            return
+
         if self.s.finished:
             return
 
@@ -312,9 +346,21 @@ class FocusClockLogic:
     def on_tick(self):
         """Called once per second, but only if running==True (window
         starts/stops the QTimer)."""
-        if self.s.finished or (not self.s.running):
+        if self.s.finished or (
+                not self.s.running and self.s.profile == "study"):
             return
+
         self._roll_segment_if_needed()
+
+        # Worklog: zählt hoch, keine Phasenwechsel
+        if self.s.profile == "worklog":
+            if self.s.running:
+                self.s.total_open_sec += 1
+                self.s.focus_work_sec += 1  # kannst du wiederverwenden als
+                # "work"
+                self.s.work_elapsed_sec += 1
+                self._on_change()
+            return
 
         self.s.total_open_sec += 1
 
@@ -399,11 +445,11 @@ class FocusClockLogic:
 
         self._on_change()
 
-    def _now(self) -> datetime:
-        return datetime.now()
-
     def _current_kind(self) -> str:
-        # What should be logged right now?
+        if self.s.profile == "worklog":
+            return "WORK" if self.s.running else "PAUSE"
+
+        # study-mode wie bisher:
         if self.s.microbreak_active:
             return "SCREEN_BREAK"
         if not self.s.running:
@@ -419,7 +465,7 @@ class FocusClockLogic:
     def _close_segment(self, end: datetime | None = None):
         if self.s._segment_start is None or not self.s._segment_kind:
             return
-        end = end or self._now()
+        end = end or _now()
         self.s.log.append(
             LogEntry(self.s._segment_kind, self.s._segment_start, end)
             )
@@ -428,12 +474,12 @@ class FocusClockLogic:
 
     def _open_segment(self, kind: str, start: datetime | None = None):
         self.s._segment_kind = kind
-        self.s._segment_start = start or self._now()
+        self.s._segment_start = start or _now()
 
     def _roll_segment_if_needed(self):
         """Call whenever state changes in a way that should start a new log
         segment."""
-        now = self._now()
+        now = _now()
         new_kind = self._current_kind()
 
         if self.s._segment_start is None:
