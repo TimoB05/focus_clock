@@ -20,8 +20,9 @@ class ClockState:
     work_elapsed_sec: int = 0
 
     # Worklog persistence / flushing
-    last_export_date: str = ""   # "YYYY-MM-DD"
-    flushed_log_idx: int = 0     # index into log[] that is already written to disk
+    last_export_date: str = ""  # "YYYY-MM-DD"
+    flushed_log_idx: int = 0  # index into log[] that is already written to
+    # disk
 
     # Runtime state
     mode: str = "focus"  # focus / break / lunch
@@ -60,6 +61,10 @@ class LogEntry:
     @property
     def duration_sec(self) -> int:
         return max(0, int((self.end - self.start).total_seconds()))
+
+
+def _now() -> datetime:
+    return datetime.now()
 
 
 class FocusClockLogic:
@@ -351,7 +356,8 @@ class FocusClockLogic:
         if self.s.profile == "worklog":
             if self.s.running:
                 self.s.total_open_sec += 1
-                self.s.focus_work_sec += 1  # kannst du wiederverwenden als "work"
+                self.s.focus_work_sec += 1  # kannst du wiederverwenden als
+                # "work"
                 self.s.work_elapsed_sec += 1
                 self._on_change()
             return
@@ -439,9 +445,6 @@ class FocusClockLogic:
 
         self._on_change()
 
-    def _now(self) -> datetime:
-        return datetime.now()
-
     def _current_kind(self) -> str:
         if self.s.profile == "worklog":
             return "WORK" if self.s.running else "PAUSE"
@@ -462,7 +465,7 @@ class FocusClockLogic:
     def _close_segment(self, end: datetime | None = None):
         if self.s._segment_start is None or not self.s._segment_kind:
             return
-        end = end or self._now()
+        end = end or _now()
         self.s.log.append(
             LogEntry(self.s._segment_kind, self.s._segment_start, end)
             )
@@ -471,12 +474,12 @@ class FocusClockLogic:
 
     def _open_segment(self, kind: str, start: datetime | None = None):
         self.s._segment_kind = kind
-        self.s._segment_start = start or self._now()
+        self.s._segment_start = start or _now()
 
     def _roll_segment_if_needed(self):
         """Call whenever state changes in a way that should start a new log
         segment."""
-        now = self._now()
+        now = _now()
         new_kind = self._current_kind()
 
         if self.s._segment_start is None:

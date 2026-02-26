@@ -15,7 +15,6 @@ class StatsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Statistics")
 
-        total = max(1, int(total_open_sec))
         running = int(total_open_sec)  # only running if running==True
         paused = int(paused_sec)  # manual pause
         den = max(1, running + paused)

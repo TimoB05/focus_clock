@@ -20,6 +20,45 @@ from .stats_dialog import \
 from .util import beep, format_hm, format_time_mmss, tint_icon
 
 
+def worklog_path() -> Path:
+    base = Path.home() / "Documents" / "FocusClock"
+    base.mkdir(parents=True, exist_ok=True)
+    return base / "worklog.csv"
+
+
+def _read_last_day_from_csv(path) -> str:
+    """Returns last DAY date in file as 'dd.mm.yyyy', or '' if none."""
+    try:
+        if not path.exists():
+            return ""
+        last_day = ""
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(";")
+                if len(parts) >= 2 and parts[0] == "DAY":
+                    last_day = parts[1].strip()
+        return last_day
+    except Exception:
+        return ""
+
+
+def append_to_worklog_csv(rows: list[list[str]]):
+    path = worklog_path()
+    file_exists = path.exists()
+
+    # utf-8-sig = Excel-freundlich (BOM), Trenner bleibt ';'
+    with open(path, "a", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f, delimiter=";")
+        if not file_exists:
+            w.writerow(["Datum", "Beginn", "Ende", "Stunden"])
+
+        for r in rows:
+            w.writerow(r)
+
+
 class FocusClockWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -760,42 +799,6 @@ class FocusClockWindow(QWidget):
 
         QMessageBox.information(self, "Export", "CSV export completed.")
 
-    def worklog_path(self) -> Path:
-        base = Path.home() / "Documents" / "FocusClock"
-        base.mkdir(parents=True, exist_ok=True)
-        return base / "worklog.csv"
-
-    def _read_last_day_from_csv(self, path) -> str:
-        """Returns last DAY date in file as 'dd.mm.yyyy', or '' if none."""
-        try:
-            if not path.exists():
-                return ""
-            last_day = ""
-            with open(path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    parts = line.split(";")
-                    if len(parts) >= 2 and parts[0] == "DAY":
-                        last_day = parts[1].strip()
-            return last_day
-        except Exception:
-            return ""
-
-    def append_to_worklog_csv(self, rows: list[list[str]]):
-        path = self.worklog_path()
-        file_exists = path.exists()
-
-        # utf-8-sig = Excel-freundlich (BOM), Trenner bleibt ';'
-        with open(path, "a", newline="", encoding="utf-8-sig") as f:
-            w = csv.writer(f, delimiter=";")
-            if not file_exists:
-                w.writerow(["Datum", "Beginn", "Ende", "Stunden"])
-
-            for r in rows:
-                w.writerow(r)
-
     def flush_worklog_to_csv(self):
         # Segment sauber bis "jetzt" schließen
         self.logic._roll_segment_if_needed()
@@ -847,7 +850,7 @@ class FocusClockWindow(QWidget):
                 )
 
         if rows:
-            self.append_to_worklog_csv(rows)
+            append_to_worklog_csv(rows)
 
         self.logic.s.flushed_log_idx = len(self.logic.s.log)
         QMessageBox.information(self, "Export", "CSV export completed.")
