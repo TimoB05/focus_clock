@@ -14,6 +14,7 @@ class ClockState:
     break_min: int = 10
     micro_sec: int = 60
     session_goal: int = 7
+    screen_breaks_enabled: bool = True
 
     # profile switch
     profile: str = "study"  # "study" or "worklog"
@@ -139,7 +140,7 @@ class FocusClockLogic:
     # ---------- microbreak ----------
     def start_microbreak(self, after_micro: str):
         # no text, only internal timer + beep
-        if self.s.micro_sec <= 0:
+        if self.s.micro_sec <= 0 or not self.s.screen_breaks_enabled:
             self.s.after_micro = after_micro
             self.end_microbreak()
             return
@@ -427,12 +428,13 @@ class FocusClockLogic:
     # ---------- Settings apply ----------
     def apply_settings(
         self, focus_min: int, break_min: int, micro_sec: int, goal: int,
-        start_unit: int
+        start_unit: int, screen_breaks_enabled: bool = True
         ):
         self.s.focus_min = int(focus_min)
         self.s.break_min = int(break_min)
         self.s.micro_sec = int(micro_sec)
         self.s.session_goal = int(goal)
+        self.s.screen_breaks_enabled = bool(screen_breaks_enabled)
 
         start_unit = max(1, min(int(start_unit), self.s.session_goal))
         self.s.completed_units = start_unit - 1
