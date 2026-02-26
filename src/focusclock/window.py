@@ -64,7 +64,7 @@ class FocusClockWindow(QWidget):
         super().__init__()
 
         self._ui_ready = False
-        self._icon_color = QColor("#eee")  # Default bis apply_theme läuft
+        self._icon_color = QColor("#d0d0d0")  # Default bis apply_theme läuft
 
         flags = Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
 
@@ -83,6 +83,7 @@ class FocusClockWindow(QWidget):
         break_min = int(self.qs.value("break_min", 10))
         micro_sec = int(self.qs.value("micro_sec", 60))
         goal = int(self.qs.value("session_goal", 7))
+        screen_breaks_enabled = bool(int(self.qs.value("screen_breaks_enabled", 1)))
 
         # ---------- Load runtime state ----------
         mode = self.qs.value("mode", "focus")
@@ -110,6 +111,7 @@ class FocusClockWindow(QWidget):
             break_min=break_min,
             micro_sec=micro_sec,
             session_goal=goal,
+            screen_breaks_enabled=screen_breaks_enabled,
             mode=mode,
             remaining=remaining,
             completed_units=completed_units,
@@ -181,12 +183,12 @@ class FocusClockWindow(QWidget):
         self.focustime_label = QLabel("")
         self.focustime_label.setFont(QFont("Segoe UI", 9))
         self.focustime_label.setAlignment(Qt.AlignCenter)
-        self.focustime_label.setStyleSheet("color: #bbb;")
+        self.focustime_label.setStyleSheet("color: #999;")
 
         self.mode_label = QLabel("")
         self.mode_label.setAlignment(Qt.AlignCenter)
         self.mode_label.setFont(QFont("Segoe UI", 9, QFont.Bold))
-        self.mode_label.setStyleSheet("color: #888;")
+        self.mode_label.setStyleSheet("color: #777;")
 
         self.timer_label = QLabel("")
         self.timer_label.setFont(QFont("Segoe UI", 26, QFont.Bold))
@@ -200,7 +202,7 @@ class FocusClockWindow(QWidget):
         self.info_label = QLabel("")
         self.info_label.setFont(QFont("Segoe UI", 9))
         self.info_label.setAlignment(Qt.AlignCenter)
-        self.info_label.setStyleSheet("color: #bbb;")
+        self.info_label.setStyleSheet("color: #999;")
         self.info_label.hide()
 
         # ---------- Controls ----------
@@ -397,7 +399,7 @@ class FocusClockWindow(QWidget):
                 self.tick_timer.stop()
             return
 
-        # microbreak display
+        # microbreak display (optional)
         if s.microbreak_active:
             self.mode_label.setText("SCREEN BREAK")
             # Basisfarbe nicht hart setzen (kommt aus apply_theme),
@@ -455,7 +457,7 @@ class FocusClockWindow(QWidget):
                 self.mode_label.setText("LUNCH")
                 self.timer_label.setStyleSheet("color: #7CC7FF;")
 
-            self.mode_label.setStyleSheet("color: #888;")
+            self.mode_label.setStyleSheet("color: #777;")
             self.play_pause_btn.setIcon(
                 tint_icon(
                     self.style().standardIcon(QStyle.SP_MediaPause),
@@ -491,36 +493,36 @@ class FocusClockWindow(QWidget):
         dark = bg.lightness() < 128
 
         if dark:
-            muted = "#bbb"
-            subtle = "#888"
+            muted = "#999"
+            subtle = "#777"
             wrapper_css = """
                 QWidget#wrapper {
-                    background: #111;
+                    background: #1a1a1a;
                     border: 1px solid #333;
                     border-radius: 14px;
                 }
-                QLabel { color: #eee; }
+                QLabel { color: #d0d0d0; }
                 QPushButton {
                     background: transparent;
-                    color: #eee;
+                    color: #d0d0d0;
                     border: none;
                     padding: 2px 6px;
                     border-radius: 6px;
                 }
-                QPushButton:hover { background: #222; }
+                QPushButton:hover { background: #2a2a2a; }
             """
             ctrl_css = """
                 QPushButton {
-                    background: #262626;
+                    background: #2a2a2a;
                     border: 1px solid #3a3a3a;
                     border-radius: 10px;
-                    color: #eee;
+                    color: #d0d0d0;
                 }
-                QPushButton:hover { background: #2f2f2f; border: 1px solid 
+                QPushButton:hover { background: #353535; border: 1px solid
                 #4a4a4a; }
-                QPushButton:pressed { background: #1f1f1f; }
+                QPushButton:pressed { background: #242424; }
             """
-            icon_color = QColor("#eee")
+            icon_color = QColor("#d0d0d0")
 
         else:
             muted = "#444"
@@ -660,11 +662,12 @@ class FocusClockWindow(QWidget):
             s.micro_sec,
             s.session_goal,
             self.logic.current_unit(),
+            s.screen_breaks_enabled,
             )
         if dlg.exec() == QDialog.Accepted:
-            focus_min, break_min, micro_sec, goal, start_unit = dlg.values()
+            focus_min, break_min, micro_sec, goal, start_unit, screen_breaks_enabled = dlg.values()
             self.logic.apply_settings(
-                focus_min, break_min, micro_sec, goal, start_unit
+                focus_min, break_min, micro_sec, goal, start_unit, screen_breaks_enabled
                 )
 
             # persist config immediately
@@ -673,6 +676,7 @@ class FocusClockWindow(QWidget):
             self.qs.setValue("micro_sec", self.logic.s.micro_sec)
             self.qs.setValue("session_goal", self.logic.s.session_goal)
             self.qs.setValue("start_unit", int(start_unit))
+            self.qs.setValue("screen_breaks_enabled", int(self.logic.s.screen_breaks_enabled))
 
             self.update_ui()
 

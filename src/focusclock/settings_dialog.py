@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QDialogButtonBox,
+    QApplication, QCheckBox, QDialog, QDialogButtonBox,
     QFormLayout, QSpinBox, QVBoxLayout
     )
 
@@ -9,14 +9,14 @@ from PySide6.QtWidgets import (
 class SettingsDialog(QDialog):
     def __init__(
         self, parent, focus_min: int, break_min: int, micro_sec: int,
-        goal: int, start_unit: int
+        goal: int, start_unit: int, screen_breaks_enabled: bool = True
         ):
         super().__init__(parent)
 
         app = QApplication.instance()
         bg = app.palette().color(QPalette.Window)
         dark = bg.lightness() < 128
-        self.setStyleSheet("color: #eee;" if dark else "color: #111;")
+        self.setStyleSheet("color: #d0d0d0;" if dark else "color: #111;")
 
         self.setWindowTitle("Settings")
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
@@ -28,6 +28,9 @@ class SettingsDialog(QDialog):
         self.brk = QSpinBox()
         self.brk.setRange(1, 120)
         self.brk.setValue(break_min)
+
+        self.screen_breaks_checkbox = QCheckBox()
+        self.screen_breaks_checkbox.setChecked(screen_breaks_enabled)
 
         self.micro = QSpinBox()
         self.micro.setRange(0, 600)  # 0 = deactivate microbreak
@@ -44,6 +47,7 @@ class SettingsDialog(QDialog):
         form = QFormLayout()
         form.addRow("Focus (Min)", self.focus)
         form.addRow("Break (Min)", self.brk)
+        form.addRow("Screen Breaks Enabled", self.screen_breaks_checkbox)
         form.addRow("Screen Break (Sec)", self.micro)
         form.addRow("Target Units", self.goal)
         form.addRow("Starting Unit", self.start_units)
@@ -66,4 +70,5 @@ class SettingsDialog(QDialog):
             self.micro.value(),
             self.goal.value(),
             self.start_units.value(),
+            self.screen_breaks_checkbox.isChecked(),
             )
