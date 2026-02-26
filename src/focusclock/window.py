@@ -397,7 +397,7 @@ class FocusClockWindow(QWidget):
                 self.tick_timer.stop()
             return
 
-        # microbreak display (optional)
+        # microbreak display
         if s.microbreak_active:
             self.mode_label.setText("SCREEN BREAK")
             # Basisfarbe nicht hart setzen (kommt aus apply_theme),
