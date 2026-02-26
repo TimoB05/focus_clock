@@ -3,9 +3,10 @@ from __future__ import annotations
 import csv
 import sys
 from datetime import datetime
+from pathlib import Path
 
 from PySide6.QtCore import QEvent, QPoint, QSettings, QSize, Qt, QTimer
-from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPalette
+from PySide6.QtGui import QAction, QColor, QCursor, QFont, QPalette
 from PySide6.QtWidgets import (
     QApplication, QDialog, QFileDialog, QHBoxLayout,
     QLabel, QMenu, QMessageBox, QPushButton, QStyle, QSystemTrayIcon,
@@ -17,8 +18,6 @@ from .settings_dialog import SettingsDialog
 from .stats_dialog import \
     StatsDialog
 from .util import beep, format_hm, format_time_mmss, tint_icon
-from pathlib import Path
-from PySide6.QtGui import QCursor
 
 
 class FocusClockWindow(QWidget):
@@ -287,13 +286,15 @@ class FocusClockWindow(QWidget):
         # ---- WORKLOG UI ----
         if s.profile == "worklog":
             # Top progress + units hidden
-            self.focustime_label.setText("")   # kein 0:00/5:50
-            self.counter_label.setText("")     # keine Units
+            self.focustime_label.setText("")  # kein 0:00/5:50
+            self.counter_label.setText("")  # keine Units
 
             # Mode label neutral (oder grün)
             if s.running:
                 self.mode_label.setText("WORK")
-                self.mode_label.setStyleSheet("color: #7CFC98;")  # neutral grau
+                self.mode_label.setStyleSheet(
+                    "color: #7CFC98;"
+                    )  # neutral grau
                 self.timer_label.setStyleSheet("color: #7CFC98;")  # grün
             else:
                 self.mode_label.setText("PAUSED")
@@ -311,16 +312,20 @@ class FocusClockWindow(QWidget):
             # Play/Pause icon + tick timer
             if s.running:
                 self.play_pause_btn.setIcon(
-                    tint_icon(self.style().standardIcon(QStyle.SP_MediaPause),
-                              color=self._icon_color)
-                )
+                    tint_icon(
+                        self.style().standardIcon(QStyle.SP_MediaPause),
+                        color=self._icon_color
+                        )
+                    )
                 if not self.tick_timer.isActive():
                     self.tick_timer.start()
             else:
                 self.play_pause_btn.setIcon(
-                    tint_icon(self.style().standardIcon(QStyle.SP_MediaPlay),
-                              color=self._icon_color)
-                )
+                    tint_icon(
+                        self.style().standardIcon(QStyle.SP_MediaPlay),
+                        color=self._icon_color
+                        )
+                    )
                 if self.tick_timer.isActive():
                     self.tick_timer.stop()
 
@@ -715,48 +720,43 @@ class FocusClockWindow(QWidget):
             return
 
         def fmt_day(dt: datetime) -> str:
-            return dt.strftime("%d.%m.%Y")  # nur für DAY (deutsch)
+            return dt.strftime("%d.%m.%y")
 
-        def fmt_time(dt: datetime) -> str:
-            return dt.strftime("%H:%M")  # nur Uhrzeit für WORK/BREAK
+        def fmt_clock(dt: datetime) -> str:
+            if dt.minute == 0:
+                return f"{dt.hour} Uhr"
+            return f"{dt.hour}:{dt.minute:02d} Uhr"
 
-        total_focus = 0
-        total_break = 0
-        total_pause = 0
+        def fmt_hours_minutes(total_minutes: int) -> str:
+            total_minutes = max(0, int(total_minutes))
+            h = total_minutes // 60
+            m = total_minutes % 60
+            if m == 0:
+                return f"{h}h"
+            return f"{h}h {m}m"
 
-        with open(path, "w", newline="", encoding="utf-8") as f:
-            w = csv.writer(f)
-            w.writerow(
-                ["Type", "Start", "End", "DurationMinutes", "DurationSeconds"]
+        # Rechnung-/Stundenabrechnung-Format: nur Arbeitsblöcke exportieren.
+        work_entries = [e for e in entries if e.kind in {"FOCUS", "WORK"}]
+        if not work_entries:
+            QMessageBox.information(
+                self, "Export", "No work entries to export yet."
                 )
+            return
 
-            for e in entries:
-                dur = e.duration_sec
+        with open(path, "w", newline="", encoding="utf-8-sig") as f:
+            w = csv.writer(f, delimiter=";")
+            w.writerow(["Datum", "Beginn", "Ende", "Stunden"])
+
+            for e in work_entries:
+                row_minutes = int(round(e.duration_sec / 60))
                 w.writerow(
-                    [e.kind, fmt(e.start), fmt(e.end), round(dur / 60, 2), dur]
+                    [
+                        fmt_day(e.start),
+                        fmt_clock(e.start),
+                        fmt_clock(e.end),
+                        fmt_hours_minutes(row_minutes),
+                        ]
                     )
-
-                # BREAK (nur wenn >= 60s)
-                if e.kind == "PAUSE":
-                    if e.duration_sec >= 60:
-                        rows.append(
-                            ["BREAK", fmt_time(e.start), fmt_time(e.end), ""]
-                            )
-                elif e.kind == "WORK":
-                    minutes = int(round(e.duration_sec / 60))
-                    rows.append(
-                        [
-                            "WORK", fmt_time(e.start), fmt_time(e.end),
-                            str(minutes)
-                            ]
-                        )
-
-            w.writerow([])
-            w.writerow(["Totals"])
-            w.writerow(["FocusMinutes", round(total_focus / 60, 2)])
-            w.writerow(["BreakMinutes", round(total_break / 60, 2)])
-            w.writerow(["PausedMinutes", round(total_pause / 60, 2)])
-            w.writerow(["NetWorkMinutes", round((total_focus) / 60, 2)])
 
         QMessageBox.information(self, "Export", "CSV export completed.")
 
@@ -787,27 +787,14 @@ class FocusClockWindow(QWidget):
         path = self.worklog_path()
         file_exists = path.exists()
 
-        with open(path, "a", newline="", encoding="utf-8") as f:
+        # utf-8-sig = Excel-freundlich (BOM), Trenner bleibt ';'
+        with open(path, "a", newline="", encoding="utf-8-sig") as f:
             w = csv.writer(f, delimiter=";")
             if not file_exists:
-                w.writerow(["Type", "Start", "End", "Minutes"])
-
-            self.maybe_write_day_separator(w, path)
+                w.writerow(["Datum", "Beginn", "Ende", "Stunden"])
 
             for r in rows:
                 w.writerow(r)
-
-    def maybe_write_day_separator(self, w, path):
-        today = datetime.now().strftime("%d.%m.%Y")  # deutsch
-
-        # Wenn RAM leer (Neustart), aus Datei lesen
-        if not self.logic.s.last_export_date:
-            self.logic.s.last_export_date = self._read_last_day_from_csv(path)
-
-        if self.logic.s.last_export_date != today:
-            w.writerow([])
-            w.writerow(["DAY", today, "", ""])
-            self.logic.s.last_export_date = today
 
     def flush_worklog_to_csv(self):
         # Segment sauber bis "jetzt" schließen
@@ -818,23 +805,49 @@ class FocusClockWindow(QWidget):
         if not entries:
             return
 
-        def fmt_time(dt: datetime) -> str:
-            return dt.strftime("%H:%M")  # nur Uhrzeit
+        def fmt_day(dt: datetime) -> str:
+            # wie in deiner Beispiel-CSV: dd.mm.yy
+            return dt.strftime("%d.%m.%y")
 
-        rows = []
+        def fmt_clock(dt: datetime) -> str:
+            # wie in deiner Beispiel-CSV: "10 Uhr" oder "12:30 Uhr"
+            if dt.minute == 0:
+                return f"{dt.hour} Uhr"
+            return f"{dt.hour}:{dt.minute:02d} Uhr"
+
+        def fmt_duration_words(total_minutes: int) -> str:
+            h = total_minutes // 60
+            m = total_minutes % 60
+            if m == 0:
+                return f"{h} Stunden"
+            return f"{h} Stunden {m} Minuten"
+
+        def fmt_hours_minutes(total_minutes: int) -> str:
+            total_minutes = max(0, int(total_minutes))
+            h = total_minutes // 60
+            m = total_minutes % 60
+            if m == 0:
+                return f"{h}h"
+            return f"{h}h {m}m"
+
+        rows: list[list[str]] = []
         for e in entries:
-            if e.kind == "PAUSE":
-                # Only log as BREAK if pause >= 60s
-                if e.duration_sec >= 60:
-                    rows.append(["BREAK", fmt_time(e.start), fmt_time(e.end), ""])
-            elif e.kind == "WORK":
-                minutes = int(round(e.duration_sec / 60))
-                rows.append(["WORK", fmt_time(e.start), fmt_time(e.end), str(minutes)])
+            # Worklog-CSV soll nur Arbeitszeiten enthalten (keine Break-Zeilen)
+            if e.kind != "WORK":
+                continue
 
-        self.append_to_worklog_csv(rows)
+            minutes = int(round(e.duration_sec / 60))
+            rows.append(
+                [
+                    fmt_day(e.start),
+                    fmt_clock(e.start),
+                    fmt_clock(e.end),
+                    fmt_duration_words(minutes),
+                    ]
+                )
+
+        if rows:
+            self.append_to_worklog_csv(rows)
+
         self.logic.s.flushed_log_idx = len(self.logic.s.log)
-
-        QMessageBox.information(
-            self, "Worklog",
-            f"Appended {len(rows)} rows to:\n{self.worklog_path()}"
-            )
+        QMessageBox.information(self, "Export", "CSV export completed.")
